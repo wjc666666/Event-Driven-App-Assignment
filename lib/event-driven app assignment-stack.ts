@@ -5,6 +5,9 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class EventDrivenAppAssignmentStack extends cdk.Stack {
@@ -61,6 +64,46 @@ export class EventDrivenAppAssignmentStack extends cdk.Stack {
       handler: 'statusUpdateMailer.handler',
       code: lambda.Code.fromAsset('lambda')
     });
+
+    // S3 triggers SNS Topic on object creation
+    imageBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.SnsDestination(topic)
+    );
+
+    // SNS Topic subscriptions with filter policies
+    // 1. SQS Queue: only receives image upload events
+    topic.addSubscription(new subscriptions.SqsSubscription(queue, {
+      filterPolicy: {
+        eventType: sns.SubscriptionFilter.stringFilter({
+          allowlist: ['ImageUpload']
+        })
+      }
+    }));
+
+    // 2. Add Metadata Lambda: only receives metadata events
+    topic.addSubscription(new subscriptions.LambdaSubscription(addMetadataFn, {
+      filterPolicy: {
+        eventType: sns.SubscriptionFilter.stringFilter({
+          allowlist: ['AddMetadata']
+        })
+      }
+    }));
+
+    // 3. Update Status Lambda: only receives status update events
+    topic.addSubscription(new subscriptions.LambdaSubscription(updateStatusFn, {
+      filterPolicy: {
+        eventType: sns.SubscriptionFilter.stringFilter({
+          allowlist: ['UpdateStatus']
+        })
+      }
+    }));
+
+    // SQS Queue triggers Log Image Lambda
+    logImageFn.addEventSource(new lambdaEventSources.SqsEventSource(queue));
+
+    // DLQ triggers Remove Image Lambda
+    removeImageFn.addEventSource(new lambdaEventSources.SqsEventSource(dlq));
 
     // example resource
     // const queue = new sqs.Queue(this, 'EventDrivenAppAssignmentQueue', {
