@@ -51,8 +51,12 @@ export class EventDrivenAppAssignmentStack extends cdk.Stack {
     const addMetadataFn = new lambda.Function(this, 'AddMetadataFn', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'addMetadata.handler',
-      code: lambda.Code.fromAsset('lambda')
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        IMAGE_TABLE: imageTable.tableName
+      }
     });
+    imageTable.grantWriteData(addMetadataFn);
     const updateStatusFn = new lambda.Function(this, 'UpdateStatusFn', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'updateStatus.handler',
