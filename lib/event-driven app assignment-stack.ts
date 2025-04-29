@@ -8,6 +8,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
+import * as iam from 'aws-cdk-lib/aws-iam';
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class EventDrivenAppAssignmentStack extends cdk.Stack {
@@ -48,6 +49,7 @@ export class EventDrivenAppAssignmentStack extends cdk.Stack {
       }
     });
     imageTable.grantWriteData(logImageFn);
+
     const addMetadataFn = new lambda.Function(this, 'AddMetadataFn', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'addMetadata.handler',
@@ -57,21 +59,38 @@ export class EventDrivenAppAssignmentStack extends cdk.Stack {
       }
     });
     imageTable.grantWriteData(addMetadataFn);
+
     const updateStatusFn = new lambda.Function(this, 'UpdateStatusFn', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'updateStatus.handler',
-      code: lambda.Code.fromAsset('lambda')
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        IMAGE_TABLE: imageTable.tableName
+      }
     });
+    imageTable.grantWriteData(updateStatusFn);
+
     const removeImageFn = new lambda.Function(this, 'RemoveImageFn', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'removeImage.handler',
       code: lambda.Code.fromAsset('lambda')
     });
+    imageBucket.grantDelete(removeImageFn);
+
     const statusUpdateMailerFn = new lambda.Function(this, 'StatusUpdateMailerFn', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'statusUpdateMailer.handler',
-      code: lambda.Code.fromAsset('lambda')
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        SENDER_EMAIL: 'your-sender@example.com',
+        PHOTOGRAPHER_EMAIL: 'photographer@example.com'
+      }
     });
+    // Grant SES permissions
+    statusUpdateMailerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+      resources: ['*']
+    }));
 
     // S3 triggers SNS Topic on object creation
     imageBucket.addEventNotification(
