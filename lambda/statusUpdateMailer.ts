@@ -1,4 +1,5 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
+import { SNSEvent, SNSEventRecord } from 'aws-lambda';
 
 const ses = new SESClient({});
 
@@ -11,19 +12,50 @@ interface StatusUpdate {
     };
 }
 
-export const handler = async (event: any) => {
-    for (const record of event.Records) {
+export const handler = async (event: SNSEvent): Promise<{ statusCode: number; body: string }> => {
+    try {
+        for (const record of event.Records) {
+            await processRecord(record);
+        }
+        return { statusCode: 200, body: 'Status Update Mailer Lambda executed successfully.' };
+    } catch (error) {
+        console.error('Error processing SNS event:', error);
+        throw error;
+    }
+};
+
+async function processRecord(record: SNSEventRecord): Promise<void> {
+    try {
         const sns = record.Sns;
         const message = JSON.parse(sns.Message) as StatusUpdate;
 
         const { id, date, update } = message;
         const { status, reason } = update;
 
-        // Send email notification to photographer
+        if (!id || !date || !status || !reason) {
+            console.warn('Missing required fields in message:', { id, date, status, reason });
+            return;
+        }
+
+        if (!['Pass', 'Reject'].includes(status)) {
+            console.error(`Invalid status: ${status}`);
+            return;
+        }
+
+        const senderEmail = process.env.SENDER_EMAIL;
+        const photographerEmail = process.env.PHOTOGRAPHER_EMAIL;
+
+        if (!senderEmail || !photographerEmail) {
+            console.error('Missing required environment variables: SENDER_EMAIL or PHOTOGRAPHER_EMAIL');
+            return;
+        }
+
+        console.log(`Sending status update email for image ${id} to ${photographerEmail}`);
+
         await ses.send(new SendEmailCommand({
-            Source: process.env.SENDER_EMAIL,
+            Source: senderEmail,
             Destination: {
-                ToAddresses: [process.env.PHOTOGRAPHER_EMAIL]
+                ToAddresses: [photographerEmail]
             },
             Message: {
                 Subject: {
@@ -36,7 +68,10 @@ export const handler = async (event: any) => {
                 }
             }
         }));
-    }
 
-    return { statusCode: 200, body: 'Status Update Mailer Lambda executed.' };
-}; 
+        console.log(`Successfully sent status update email for image ${id}`);
+    } catch (error) {
+        console.error('Error processing record:', error);
+        throw error;
+    }
+} 
