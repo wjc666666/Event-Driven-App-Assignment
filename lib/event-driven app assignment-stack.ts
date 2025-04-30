@@ -9,6 +9,7 @@ import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 export class EventDrivenAppAssignmentStack extends cdk.Stack {
@@ -131,6 +132,38 @@ export class EventDrivenAppAssignmentStack extends cdk.Stack {
 
     // DLQ triggers Remove Image Lambda
     removeImageFn.addEventSource(new lambdaEventSources.SqsEventSource(dlq));
+
+    // Add the new Lambda function for getting photographer images
+    const getPhotographerImagesFn = new lambda.Function(this, 'GetPhotographerImagesFn', {
+      runtime: lambda.Runtime.NODEJS_18_X,
+      handler: 'getPhotographerImages.handler',
+      code: lambda.Code.fromAsset('lambda'),
+      environment: {
+        IMAGES_TABLE_NAME: imageTable.tableName
+      }
+    });
+
+    // Grant the Lambda function read access to the DynamoDB table
+    imageTable.grantReadData(getPhotographerImagesFn);
+
+    // Add API Gateway endpoint
+    const api = new apigateway.RestApi(this, 'PhotoGalleryApi', {
+      restApiName: 'Photo Gallery API',
+      description: 'API for the Photo Gallery application'
+    });
+
+    const photographers = api.root.addResource('photographers');
+    const photographerImages = photographers.addResource('{photographerId}').addResource('images');
+    
+    photographerImages.addMethod('GET', new apigateway.LambdaIntegration(getPhotographerImagesFn));
+
+    // Add GSI to the DynamoDB table for querying by photographer
+    imageTable.addGlobalSecondaryIndex({
+      indexName: 'PhotographerIdIndex',
+      partitionKey: { name: 'photographerId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL
+    });
 
     // example resource
     // const queue = new sqs.Queue(this, 'EventDrivenAppAssignmentQueue', {
