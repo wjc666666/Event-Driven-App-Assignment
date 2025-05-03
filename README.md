@@ -2,7 +2,7 @@
 
 __Name:__ Juncheng Wang
 
-__Demo__: [URL of YouTube demo]
+__Demo__: https://youtu.be/HnYfMg6etVk
 
 This repository implements a photo gallery management system using AWS services and Event-Driven Architecture. The application is deployed on AWS using CDK for infrastructure provisioning.
 
