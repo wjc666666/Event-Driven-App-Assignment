@@ -13,12 +13,6 @@ interface Message {
     value: string;
 }
 
-interface MessageAttributes {
-    metadata_type: {
-        Value: string;
-    };
-}
-
 export const handler = async (event: SNSEvent): Promise<{ statusCode: number; body: string }> => {
     try {
         for (const record of event.Records) {
@@ -35,11 +29,17 @@ async function processRecord(record: SNSEventRecord): Promise<void> {
     try {
         const sns = record.Sns;
         const message = JSON.parse(sns.Message) as Message;
-        const attributes = sns.MessageAttributes as unknown as MessageAttributes;
-
+        
+        // Extract metadata type from message attributes
+        const metadataTypeAttr = sns.MessageAttributes?.metadata_type;
+        if (!metadataTypeAttr) {
+            console.warn('Missing metadata_type attribute in message');
+            return;
+        }
+        
+        const metadataType = metadataTypeAttr.Value;
         const id = message.id;
         const value = message.value;
-        const metadataType = attributes?.metadata_type?.Value;
 
         if (!id || !value || !metadataType) {
             console.warn('Missing required fields in message:', { id, value, metadataType });

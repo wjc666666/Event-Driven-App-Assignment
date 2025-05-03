@@ -45,7 +45,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Upload image to S3
         const s3Params = {
-            Bucket: process.env.IMAGES_BUCKET_NAME!,
+            Bucket: process.env.BUCKET_NAME!,
             Key: `images/${imageData.id}/${imageData.metadata.filename}`,
             Body: Buffer.from(imageData.metadata.location, 'base64'),
             ContentType: imageData.metadata.type
@@ -55,7 +55,7 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
         // Log image information to DynamoDB
         const dynamoParams = {
-            TableName: process.env.IMAGES_TABLE_NAME!,
+            TableName: process.env.TABLE_NAME!,
             Item: {
                 id: imageData.id,
                 photographerId: imageData.photographerId,
