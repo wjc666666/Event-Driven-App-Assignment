@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref ImagesTable
+        BUCKET_NAME: !Ref ImagesBucket
+
+Resources:
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-images-${AWS::AccountId}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST, DELETE]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+
+  ImagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${AWS::StackName}-images
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  LogNewImageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda/logNewImage.handler
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref ImagesBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImagesTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /images
+            Method: post
+
+  UpdateMetadataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda/addMetadata.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImagesTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /images/{id}/metadata
+            Method: put
+
+  UpdateStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda/updateImageStatus.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImagesTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /images/{id}/status
+            Method: put
+
+  RemoveImageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda/removeImage.handler
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref ImagesBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImagesTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /images/{id}
+            Method: delete
+
+  StatusUpdateMailerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda/statusUpdateMailer.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ImagesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: '*'
+
+Outputs:
+  ImagesBucketName:
+    Description: Name of the S3 bucket for storing images
+    Value: !Ref ImagesBucket
+
+  ImagesTableName:
+    Description: Name of the DynamoDB table for storing image metadata
+    Value: !Ref ImagesTable
+
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/ 
